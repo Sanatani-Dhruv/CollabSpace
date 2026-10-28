@@ -392,3 +392,125 @@ document.getElementById("clearCanvas").addEventListener("click", async () => {
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 connect();
+// ==========================================
+// Sticky-note canvas — Chunk 1
+// State and rendering foundation
+// ==========================================
+
+const stickyBoard = document.getElementById("stickyNotesCanvas");
+const addCanvasNoteButton = document.getElementById("addCanvasNote");
+const canvasNoteStatus = document.getElementById("canvasNoteStatus");
+
+const canvasNotes = new Map();
+const canvasNoteSaveTimers = new Map();
+const canvasNoteSaveVersions = new Map();
+
+let canvasNotesReady = false;
+
+function setCanvasNoteStatus(message) {
+	if (canvasNoteStatus) {
+		canvasNoteStatus.textContent = message;
+	}
+}
+
+function normalizeCanvasNote(note) {
+	if (!note || !Number.isInteger(Number(note.id))) {
+		throw new Error("Received an invalid canvas note.");
+	}
+
+	return {
+		id: Number(note.id),
+		roomId: Number(note.roomId),
+		content: String(note.content ?? ""),
+		x: Number(note.x),
+		y: Number(note.y),
+		width: Number(note.width),
+		height: Number(note.height),
+		color: String(note.color ?? "#fff3a3"),
+		createdAt: note.createdAt,
+		updatedAt: note.updatedAt
+	};
+
+
+}
+
+function renderCanvasNote(noteData) {
+	if (!stickyBoard) {
+		return;
+	}
+
+	const note = normalizeCanvasNote(noteData);
+	let element = stickyBoard.querySelector(
+		`[data-canvas-note-id="${note.id}"]`
+	);
+
+	if (!element) {
+		element = document.createElement("article");
+		element.className = "sticky-note";
+		element.dataset.canvasNoteId = String(note.id);
+
+		const header = document.createElement("div");
+		header.className = "sticky-note-header";
+
+		const title = document.createElement("span");
+		title.textContent = "Note";
+
+		const tools = document.createElement("div");
+		tools.className = "sticky-note-tools";
+
+		const color = document.createElement("input");
+		color.type = "color";
+		color.className = "sticky-note-color";
+		color.value = /^#[0-9a-fA-F]{6}$/.test(note.color)
+			? note.color
+			: "#fff3a3";
+		color.title = "Change note color";
+		color.setAttribute("aria-label", "Change note color");
+
+		const remove = document.createElement("button");
+		remove.type = "button";
+		remove.className = "btn btn-sm btn-outline-danger";
+		remove.textContent = "×";
+		remove.title = "Delete note";
+		remove.setAttribute("aria-label", "Delete note");
+
+		const content = document.createElement("textarea");
+		content.className = "sticky-note-content";
+		content.maxLength = 500000;
+		content.placeholder = "Write an idea…";
+		content.setAttribute("aria-label", "Sticky note content");
+
+		const resize = document.createElement("div");
+		resize.className = "sticky-note-resize";
+		resize.setAttribute("aria-label", "Resize note");
+
+		tools.append(color, remove);
+		header.append(title, tools);
+		element.append(header, content, resize);
+		stickyBoard.append(element);
+	}
+
+	element.style.left = `${note.x}px`;
+	element.style.top = `${note.y}px`;
+	element.style.width = `${note.width}px`;
+	element.style.height = `${note.height}px`;
+	element.style.backgroundColor = note.color;
+
+	const content = element.querySelector(".sticky-note-content");
+	const color = element.querySelector(".sticky-note-color");
+
+	// Avoid overwriting text while the user is editing this note.
+	if (document.activeElement !== content) {
+		content.value = note.content;
+	}
+
+	if (color && color.value !== note.color) {
+		color.value = /^#[0-9a-fA-F]{6}$/.test(note.color)
+			? note.color
+			: "#fff3a3";
+	}
+
+	canvasNotes.set(note.id, note);
+
+
+}
