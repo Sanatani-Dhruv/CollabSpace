@@ -417,3 +417,177 @@ Do not introduce migrations unless a real schema change is needed.
 In a new conversation, provide this file and say:
 
 "Continue building CollabSpace from LATEST.md. Inspect the actual current files before editing. Start with access control and reliability. Give the next small implementation step with complete files and copy-paste zsh commands. My terminal is already in the project directory. For clipboard-only commands, use `{ echo '...' } | xclip -i`; don't use Python scripts just for copying. Do not repeat completed work."
+
+---
+
+# CollabSpace — Latest Project State
+
+## Current status
+
+- Project: ASP.NET Core MVC application using .NET 10.
+- Project directory: `/home/dhruv125/projects/CollabSpace`
+- Database: MySQL (`collabspace_db`).
+- Real-time collaboration: SignalR.
+- Build status: Last reported build succeeded with 0 warnings and 0 errors.
+- Completed migrations:
+  - `20261028103813_InitialCreate`
+  - `20261028153923_AddCanvasNotes`
+
+## Implemented features
+
+### 1. Shared workspace
+
+- Workspace page: `Views/Rooms/Workspace.cshtml`
+- JavaScript: `wwwroot/js/workspace.js`
+- Shared notes use SignalR and automatically save changes.
+- Connection recovery and automatic retries are implemented.
+- Drawing strokes are stored in the database and broadcast to other participants.
+- Access to workspaces is checked through room access claims and active-room validation.
+
+### 2. Persistent canvas notes
+
+The following files have been added or modified for canvas-note support:
+
+- `Models/CanvasNote.cs`
+- `Data/ApplicationDbContext.cs`
+- `Models/Room.cs`
+- `Hubs/CollaborationHub.cs`
+- `Migrations/20261028153923_AddCanvasNotes.cs`
+- `Migrations/20261028153923_AddCanvasNotes.Designer.cs`
+- `Migrations/ApplicationDbContextModelSnapshot.cs`
+- `Program.cs`
+- `Controllers/RoomsController.cs`
+- `wwwroot/js/workspace.js`
+
+The `CanvasNote` model contains:
+
+- `Id`
+- `RoomId`
+- `Content`
+- `X`
+- `Y`
+- `Width`
+- `Height`
+- `Color`
+- `CreatedAt`
+- `UpdatedAt`
+- `Room`
+
+The SignalR hub provides these canvas-note methods:
+
+- `GetCanvasNotes`
+- `CreateCanvasNote`
+- `UpdateCanvasNote`
+- `DeleteCanvasNote`
+
+The corresponding events broadcast to other participants are:
+
+- `CanvasNoteCreated`
+- `CanvasNoteUpdated`
+- `CanvasNoteDeleted`
+
+Existing drawing-stroke functionality is retained.
+
+## Important current limitation
+
+The supplied `Views/Rooms/Workspace.cshtml` still displays the original shared textarea and drawing canvas. It does not yet contain the complete sticky-note canvas interface.
+
+The supplied `wwwroot/js/workspace.js` still implements the legacy shared-note and drawing-stroke UI. It does not yet call the four canvas-note hub methods listed above.
+
+Do not assume the sticky-note frontend is complete just because the database migration and hub methods exist.
+
+## CamelCase JSON field issue — NEXT TASK
+
+The last discussion involved a CamelCase JSON field issue, but the exact field name, error message, and proposed fix were not recorded.
+
+Before changing code, inspect the current implementation and determine whether the issue concerns JSON serialization of `CanvasNoteDto`, SignalR payloads, or persisted drawing-stroke JSON.
+
+Relevant code:
+
+```csharp
+public sealed record CanvasNoteDto(
+    int Id,
+    int RoomId,
+    string Content,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string Color,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+````
+
+The hub serializes drawing strokes supplied by the client as JSON strings and returns them through `GetStrokes`. Canvas-note DTOs are returned directly through SignalR.
+
+Check whether the client expects camelCase properties, such as:
+
+javascript
+
+```
+note.id
+note.roomId
+note.content
+note.x
+note.y
+note.width
+note.height
+note.color
+note.createdAt
+note.updatedAt
+```
+
+C# property names are PascalCase, while ASP.NET Core's default JSON serialization commonly uses camelCase. SignalR JSON protocol configuration can also affect serialized property names.
+
+Inspect `Program.cs` and any custom `JsonSerializerOptions` or SignalR JSON configuration before making a change. Avoid introducing manual casing conversions unless the existing configuration requires them.
+
+## Last reported Git status
+
+Modified:
+
+- `Controllers/RoomsController.cs`
+- `Data/ApplicationDbContext.cs`
+- `Hubs/CollaborationHub.cs`
+- `Migrations/ApplicationDbContextModelSnapshot.cs`
+- `Models/Room.cs`
+- `Program.cs`
+- `wwwroot/js/workspace.js`
+
+Untracked:
+
+- `Migrations/20261028153923_AddCanvasNotes.Designer.cs`
+- `Migrations/20261028153923_AddCanvasNotes.cs`
+- `Models/CanvasNote.cs`
+
+`latest.md` is the current handoff document. The Git status above was recorded before creating this file.
+
+## Recommended next steps
+
+1. Inspect the current `Program.cs` SignalR and JSON serialization configuration.
+2. Verify the exact CamelCase field issue against the actual JavaScript property access and received payload.
+3. Fix the casing issue with the smallest compatible change.
+4. Build the project:
+   bash
+   ```
+   dotnet build
+   ```
+5. Complete the sticky-note canvas frontend in `Workspace.cshtml` and `workspace.js`.
+6. Test creating, editing, moving, resizing, recoloring, deleting, and reloading canvas notes.
+7. Verify that two participants see updates in real time.
+8. Review and commit the migration and related changes only after validation.
+
+## Working instructions
+
+- Preserve the existing workspace access checks.
+- Preserve the current drawing-stroke feature while implementing sticky notes.
+- Validate all incoming note content, geometry, and colors on the server.
+- Keep database changes in EF Core migrations.
+- Do not assume that a successful build proves the browser-side collaboration works.
+- Before applying a migration, check the existing database migration history.
+- If want to take input from user regarding output from any command use following syntax
+
+```
+{
+    # commands outputting
+} 2|> xclip -i
+```

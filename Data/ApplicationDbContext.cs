@@ -15,6 +15,8 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<RoomNote> RoomNotes => Set<RoomNote>();
 
+    public DbSet<CanvasNote> CanvasNotes => Set<CanvasNote>();
+
     public DbSet<DrawingStroke> DrawingStrokes => Set<DrawingStroke>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -41,6 +43,11 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(stroke => stroke.RoomId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasMany(room => room.CanvasNotes)
+                .WithOne(note => note.Room)
+                .HasForeignKey(note => note.RoomId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             entity.HasOne(room => room.Note)
                 .WithOne(note => note.Room)
                 .HasForeignKey<RoomNote>(note => note.RoomId)
@@ -57,6 +64,23 @@ public class ApplicationDbContext : DbContext
             entity.Property(note => note.Content)
                 .HasColumnType("longtext")
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<CanvasNote>(entity =>
+        {
+            entity.HasKey(note => note.Id);
+
+            entity.Property(note => note.Content)
+                .HasColumnType("longtext")
+                .IsRequired();
+
+            entity.Property(note => note.Color)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            entity.HasIndex(note => note.RoomId);
+
+            entity.HasIndex(note => new { note.RoomId, note.Id });
         });
 
         modelBuilder.Entity<DrawingStroke>(entity =>

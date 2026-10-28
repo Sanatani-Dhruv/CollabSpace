@@ -1,6 +1,9 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using CollabSpace.Data;
 using CollabSpace.Models;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,11 +11,55 @@ namespace CollabSpace.Controllers;
 
 public class RoomsController : Controller
 {
+    public const string RoomAccessClaim = "collabspace:room_id";
+
     private readonly ApplicationDbContext _db;
 
     public RoomsController(ApplicationDbContext db)
     {
         _db = db;
+    }
+
+    private bool HasRoomAccess(int roomId)
+    {
+        return User.HasClaim(
+            RoomAccessClaim,
+            roomId.ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    private async Task GrantRoomAccessAsync(int roomId)
+    {
+        var claims = User.FindAll(RoomAccessClaim)
+            .Where(c => int.TryParse(c.Value, out var existingId)
+                        && existingId > 0)
+            .GroupBy(c => c.Value)
+            .Select(g => g.First())
+            .ToList();
+
+        var roomIdValue = roomId.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        if (!claims.Any(c => c.Value == roomIdValue))
+        {
+            claims.Add(new Claim(RoomAccessClaim, roomIdValue));
+        }
+
+        var identity = new ClaimsIdentity(
+            claims,
+            CookieAuthenticationDefaults.AuthenticationScheme);
+
+        var principal = new ClaimsPrincipal(identity);
+
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = false,
+                AllowRefresh = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
+            });
     }
 
     [HttpGet]
@@ -21,7 +68,8 @@ public class RoomsController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(
-        string? name, CancellationToken cancellationToken)
+        string? name,
+        CancellationToken cancellationToken)
     {
         name = name?.Trim();
 
@@ -45,7 +93,9 @@ public class RoomsController : Controller
 
             if (await _db.Rooms.AnyAsync(
                     r => r.AccessCode == code, cancellationToken))
+            {
                 continue;
+            }
 
             var room = new Room
             {
@@ -59,8 +109,11 @@ public class RoomsController : Controller
             try
             {
                 await _db.SaveChangesAsync(cancellationToken);
-                return RedirectToAction(nameof(Workspace),
-                    new { id = room.Id });
+
+                await GrantRoomAccessAsync(room.Id);
+
+                return RedirectToAction(
+                    nameof(Workspace), new { id = room.Id });
             }
             catch (DbUpdateException)
             {
@@ -68,11 +121,15 @@ public class RoomsController : Controller
 
                 if (!await _db.Rooms.AnyAsync(
                         r => r.AccessCode == code, cancellationToken))
+                {
                     throw;
+                }
             }
         }
 
-        ModelState.AddModelError("", "Could not create the workspace. Try again.");
+        ModelState.AddModelError(
+            "", "Could not create the workspace. Try again.");
+
         ViewData["RoomName"] = name;
         return View();
     }
@@ -83,7 +140,8 @@ public class RoomsController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Join(
-        string? accessCode, CancellationToken cancellationToken)
+        string? accessCode,
+        CancellationToken cancellationToken)
     {
         accessCode = accessCode?.Trim().ToUpperInvariant();
 
@@ -92,11 +150,13 @@ public class RoomsController : Controller
         {
             ModelState.AddModelError(
                 nameof(accessCode), "Enter a valid access code.");
+
             ViewData["AccessCode"] = accessCode;
             return View();
         }
 
-        var room = await _db.Rooms.AsNoTracking()
+        var room = await _db.Rooms
+            .AsNoTracking()
             .FirstOrDefaultAsync(
                 r => r.AccessCode == accessCode, cancellationToken);
 
@@ -106,17 +166,27 @@ public class RoomsController : Controller
         {
             ModelState.AddModelError(
                 "", "No active workspace was found with that code.");
+
             ViewData["AccessCode"] = accessCode;
             return View();
         }
 
-        return RedirectToAction(nameof(Workspace), new { id = room.Id });
+        await GrantRoomAccessAsync(room.Id);
+
+        return RedirectToAction(
+            nameof(Workspace), new { id = room.Id });
     }
 
     [HttpGet]
     public async Task<IActionResult> Workspace(
-        int id, CancellationToken cancellationToken)
+        int id,
+        CancellationToken cancellationToken)
     {
+        if (id <= 0 || !HasRoomAccess(id))
+        {
+            return NotFound("Workspace not found or access denied.");
+        }
+
         var room = await _db.Rooms
             .AsNoTracking()
             .Include(r => r.Note)
@@ -125,7 +195,9 @@ public class RoomsController : Controller
         if (room is null ||
             (room.ExpiresAt.HasValue &&
              room.ExpiresAt.Value <= DateTime.UtcNow))
+        {
             return NotFound("Workspace not found or expired.");
+        }
 
         ViewBag.RoomId = room.Id;
         ViewBag.RoomName = room.Name;
@@ -142,8 +214,20 @@ public class RoomsController : Controller
         [FromBody] SaveNoteRequest request,
         CancellationToken cancellationToken)
     {
-        if (request.Content is null || request.Content.Length > 500_000)
-            return BadRequest(new { error = "Note is too large or invalid." });
+        if (id <= 0 || !HasRoomAccess(id))
+        {
+            return NotFound(new {
+                error = "Workspace not found or access denied."
+            });
+        }
+
+        if (request.Content is null ||
+            request.Content.Length > 500_000)
+        {
+            return BadRequest(new {
+                error = "Note is too large or invalid."
+            });
+        }
 
         var room = await _db.Rooms
             .Include(r => r.Note)
@@ -152,7 +236,11 @@ public class RoomsController : Controller
         if (room is null ||
             (room.ExpiresAt.HasValue &&
              room.ExpiresAt.Value <= DateTime.UtcNow))
-            return NotFound(new { error = "Workspace not found or expired." });
+        {
+            return NotFound(new {
+                error = "Workspace not found or expired."
+            });
+        }
 
         if (room.Note is null)
         {

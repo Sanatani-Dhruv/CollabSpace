@@ -1,11 +1,31 @@
+
 using CollabSpace.Data;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// MVC
+// MVC and SignalR
 builder.Services.AddControllersWithViews();
 builder.Services.AddSignalR();
+
+// Room access authentication
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "CollabSpace.RoomAccess";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = true;
+        options.LoginPath = "/Rooms/Join";
+        options.AccessDeniedPath = "/Rooms/Join";
+    });
+
+builder.Services.AddAuthorization();
 
 // Database: MariaDB 11.4
 var connectionString = builder.Configuration
@@ -33,11 +53,14 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
+
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
 
-app.MapHub<CollabSpace.Hubs.CollaborationHub>("/collaborationHub");
+app.MapHub<CollabSpace.Hubs.CollaborationHub>(
+    "/collaborationHub");
 
 app.MapControllerRoute(
     name: "default",

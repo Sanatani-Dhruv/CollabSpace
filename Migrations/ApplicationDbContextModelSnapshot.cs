@@ -22,6 +22,53 @@ namespace CollabSpace.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("CollabSpace.Models.CanvasNote", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<double>("Height")
+                        .HasColumnType("double");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<double>("Width")
+                        .HasColumnType("double");
+
+                    b.Property<double>("X")
+                        .HasColumnType("double");
+
+                    b.Property<double>("Y")
+                        .HasColumnType("double");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("RoomId", "Id");
+
+                    b.ToTable("CanvasNotes");
+                });
+
             modelBuilder.Entity("CollabSpace.Models.DrawingStroke", b =>
                 {
                     b.Property<int>("Id")
@@ -105,6 +152,17 @@ namespace CollabSpace.Migrations
                     b.ToTable("RoomNotes");
                 });
 
+            modelBuilder.Entity("CollabSpace.Models.CanvasNote", b =>
+                {
+                    b.HasOne("CollabSpace.Models.Room", "Room")
+                        .WithMany("CanvasNotes")
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Room");
+                });
+
             modelBuilder.Entity("CollabSpace.Models.DrawingStroke", b =>
                 {
                     b.HasOne("CollabSpace.Models.Room", "Room")
@@ -129,6 +187,8 @@ namespace CollabSpace.Migrations
 
             modelBuilder.Entity("CollabSpace.Models.Room", b =>
                 {
+                    b.Navigation("CanvasNotes");
+
                     b.Navigation("DrawingStrokes");
 
                     b.Navigation("Note");
