@@ -1,8 +1,69 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "CollabSpace";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="container py-5">
+    <div class="row justify-content-center text-center">
+        <div class="col-lg-8">
+            <h1 class="display-3 fw-bold">CollabSpace</h1>
+
+            <p class="lead text-muted mt-3 mb-4">
+                One shared space for ideas, notes, and drawings.
+                Collaborate with your team in real time.
+            </p>
+
+            <div class="d-flex justify-content-center gap-3 flex-wrap mt-4">
+                <a asp-controller="Rooms"
+                   asp-action="Create"
+                   class="btn btn-primary btn-lg">
+                    Create Workspace
+                </a>
+
+                <a asp-controller="Rooms"
+                   asp-action="Join"
+                   class="btn btn-outline-primary btn-lg">
+                    Join Workspace
+                </a>
+            </div>
+
+            <div class="row g-4 mt-5 text-start">
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <h2 class="h5">Shared Notes</h2>
+                            <p class="text-muted mb-0">
+                                Keep your team's ideas together in one place.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <h2 class="h5">Collaborative Canvas</h2>
+                            <p class="text-muted mb-0">
+                                Sketch concepts and visualize ideas together.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <h2 class="h5">Easy Access</h2>
+                            <p class="text-muted mb-0">
+                                Invite teammates with a unique workspace code.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="small text-muted mt-5">
+                Create a workspace, share its code, and start collaborating.
+            </p>
+        </div>
+    </div>
 </div>

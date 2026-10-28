@@ -1,0 +1,47 @@
+@{
+    ViewData["Title"] = "Join Workspace";
+}
+
+<div class="container py-5" style="max-width: 600px;">
+    <h1 class="mb-3">Join a workspace</h1>
+    <p class="text-muted mb-4">
+        Enter the access code shared with you.
+    </p>
+
+    <form asp-controller="Rooms" asp-action="Join" method="post">
+        <div asp-validation-summary="ModelOnly"
+             class="text-danger mb-3"></div>
+
+        <div class="mb-3">
+            <label for="accessCode" class="form-label">
+                Access code
+            </label>
+            <input id="accessCode"
+                   name="accessCode"
+                   class="form-control text-uppercase"
+                   maxlength="32"
+                   autocomplete="off"
+                   required
+                   autofocus
+                   value="@ViewData["AccessCode"]"
+                   placeholder="Enter your access code" />
+            <span class="text-danger">
+                @Html.ValidationMessage("accessCode")
+            </span>
+        </div>
+
+        <button type="submit" class="btn btn-primary">
+            Join workspace
+        </button>
+
+        <a asp-controller="Home"
+           asp-action="Index"
+           class="btn btn-outline-secondary ms-2">
+            Cancel
+        </a>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
