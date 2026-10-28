@@ -514,3 +514,280 @@ function renderCanvasNote(noteData) {
 
 
 }
+
+// ==========================================
+// Sticky-note canvas — Chunk 2
+// Dragging, resizing, interactions, and events
+// ==========================================
+
+function removeCanvasNoteDOM(noteId) {
+    const numericId = Number(noteId);
+    const element = stickyBoard?.querySelector(
+        `[data-canvas-note-id="${numericId}"]`
+    );
+    if (element) {
+        element.remove();
+    }
+    canvasNotes.delete(numericId);
+    canvasNoteSaveTimers.delete(numericId);
+    canvasNoteSaveVersions.delete(numericId);
+}
+
+function getCanvasNoteData(noteId) {
+    const numericId = Number(noteId);
+    const element = stickyBoard?.querySelector(
+        `[data-canvas-note-id="${numericId}"]`
+    );
+    if (!element) {
+        return null;
+    }
+
+    const cached = canvasNotes.get(numericId) || {
+        id: numericId,
+        roomId: config.roomId,
+        content: "",
+        x: 100,
+        y: 100,
+        width: 320,
+        height: 220,
+        color: "#fff3a3"
+    };
+
+    return {
+        ...cached,
+        content: element.querySelector(".sticky-note-content")?.value ?? cached.content,
+        color: element.querySelector(".sticky-note-color")?.value ?? cached.color,
+        x: parseFloat(element.style.left) || cached.x,
+        y: parseFloat(element.style.top) || cached.y,
+        width: parseFloat(element.style.width) || cached.width,
+        height: parseFloat(element.style.height) || cached.height
+    };
+}
+
+function scheduleCanvasNoteSave(noteId, delay = 500) {
+    const numericId = Number(noteId);
+    const existingTimer = canvasNoteSaveTimers.get(numericId);
+    if (existingTimer) {
+        clearTimeout(existingTimer);
+    }
+
+    const currentVersion = (canvasNoteSaveVersions.get(numericId) || 0) + 1;
+    canvasNoteSaveVersions.set(numericId, currentVersion);
+
+    const timer = setTimeout(async () => {
+        await saveCanvasNote(numericId, currentVersion);
+    }, delay);
+
+    canvasNoteSaveTimers.set(numericId, timer);
+}
+
+async function saveCanvasNote(noteId, version) {
+    const numericId = Number(noteId);
+    if (!connectionReady || connection.state !== signalR.HubConnectionState.Connected) {
+        setCanvasNoteStatus("Waiting for connection to save sticky note…");
+        return;
+    }
+
+    const note = getCanvasNoteData(numericId);
+    if (!note) {
+        return;
+    }
+
+    try {
+        setCanvasNoteStatus("Saving sticky note…");
+        await connection.invoke(
+            "UpdateCanvasNote",
+            config.roomId,
+            note.id,
+            note.content,
+            note.x,
+            note.y,
+            note.width,
+            note.height,
+            note.color
+        );
+
+        if (canvasNoteSaveVersions.get(numericId) === version) {
+            setCanvasNoteStatus("All sticky notes saved");
+        }
+    } catch (error) {
+        console.error("Failed to save sticky note:", error);
+        setCanvasNoteStatus("Failed to save sticky note");
+    }
+}
+
+// Wire up interactions on sticky note elements
+if (stickyBoard) {
+    stickyBoard.addEventListener("pointerdown", event => {
+        const noteEl = event.target.closest(".sticky-note");
+        if (!noteEl) return;
+
+        const noteId = Number(noteEl.dataset.canvasNoteId);
+
+        // Handle delete button
+        if (event.target.closest(".btn-outline-danger")) {
+            event.stopPropagation();
+            deleteCanvasNoteServer(noteId);
+            return;
+        }
+
+        // Handle color picker change
+        if (event.target.classList.contains("sticky-note-color")) {
+            return; // let native color picker work
+        }
+
+        // Handle textarea input
+        if (event.target.classList.contains("sticky-note-content")) {
+            noteEl.style.zIndex = String(Date.now());
+            return;
+        }
+
+        // Handle resizing
+        const isResizeHandle = event.target.classList.contains("sticky-note-resize");
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = parseFloat(noteEl.style.left) || 100;
+        const startTop = parseFloat(noteEl.style.top) || 100;
+        const startWidth = parseFloat(noteEl.style.width) || 320;
+        const startHeight = parseFloat(noteEl.style.height) || 220;
+
+        noteEl.style.zIndex = String(Date.now());
+
+        function onPointerMove(e) {
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            if (isResizeHandle) {
+                const newWidth = Math.max(200, startWidth + dx);
+                const newHeight = Math.max(150, startHeight + dy);
+                noteEl.style.width = `${newWidth}px`;
+                noteEl.style.height = `${newHeight}px`;
+            } else {
+                const newLeft = Math.max(0, startLeft + dx);
+                const newTop = Math.max(0, startTop + dy);
+                noteEl.style.left = `${newLeft}px`;
+                noteEl.style.top = `${newTop}px`;
+            }
+        }
+
+        function onPointerUp() {
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+            scheduleCanvasNoteSave(noteId, 0);
+        }
+
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+    });
+
+    stickyBoard.addEventListener("input", event => {
+        if (event.target.classList.contains("sticky-note-content")) {
+            const noteEl = event.target.closest(".sticky-note");
+            if (noteEl) {
+                const noteId = Number(noteEl.dataset.canvasNoteId);
+                scheduleCanvasNoteSave(noteId, 400);
+            }
+        }
+    });
+
+    stickyBoard.addEventListener("change", event => {
+        if (event.target.classList.contains("sticky-note-color")) {
+            const noteEl = event.target.closest(".sticky-note");
+            if (noteEl) {
+                const noteId = Number(noteEl.dataset.canvasNoteId);
+                noteEl.style.backgroundColor = event.target.value;
+                scheduleCanvasNoteSave(noteId, 0);
+            }
+        }
+    });
+}
+
+async function deleteCanvasNoteServer(noteId) {
+    const numericId = Number(noteId);
+    removeCanvasNoteDOM(numericId);
+    try {
+        setCanvasNoteStatus("Deleting note…");
+        await connection.invoke("DeleteCanvasNote", config.roomId, numericId);
+        setCanvasNoteStatus("Note deleted");
+    } catch (error) {
+        console.error("Failed to delete note on server:", error);
+        setCanvasNoteStatus("Could not delete note");
+    }
+}
+
+if (addCanvasNoteButton) {
+    addCanvasNoteButton.addEventListener("click", async () => {
+        if (!connectionReady || connection.state !== signalR.HubConnectionState.Connected) {
+            setCanvasNoteStatus("Connect before adding sticky notes");
+            return;
+        }
+
+        try {
+            setCanvasNoteStatus("Adding sticky note…");
+            const newNote = await connection.invoke(
+                "CreateCanvasNote",
+                config.roomId,
+                ""
+            );
+            renderCanvasNote(newNote);
+            setCanvasNoteStatus("Sticky note added");
+        } catch (error) {
+            console.error("Failed to create sticky note:", error);
+            setCanvasNoteStatus("Could not create sticky note");
+        }
+    });
+}
+
+// Register Hub listeners for canvas notes
+connection.on("CanvasNoteCreated", note => {
+    renderCanvasNote(note);
+});
+
+connection.on("CanvasNoteUpdated", note => {
+    const numericId = Number(note.id);
+    const element = stickyBoard?.querySelector(`[data-canvas-note-id="${numericId}"]`);
+    // If the user is actively typing in this note, do not overwrite their content immediately
+    if (element && document.activeElement === element.querySelector(".sticky-note-content")) {
+        return;
+    }
+    renderCanvasNote(note);
+});
+
+connection.on("CanvasNoteDeleted", noteId => {
+    removeCanvasNoteDOM(noteId);
+});
+
+// Load existing canvas notes during joinAndLoad / reconnection
+async function loadCanvasNotes() {
+    try {
+        const notes = await connection.invoke("GetCanvasNotes", config.roomId);
+        if (Array.isArray(notes)) {
+            for (const note of notes) {
+                renderCanvasNote(note);
+            }
+        }
+        canvasNotesReady = true;
+    } catch (error) {
+        console.error("Failed to load canvas notes:", error);
+        setCanvasNoteStatus("Failed to load sticky notes");
+    }
+}
+
+// Helper for escaping text in notes
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+// Ensure loadCanvasNotes is called upon connection/reconnection
+const originalJoinAndLoad = joinAndLoad;
+window.joinAndLoad = async function() {
+    await originalJoinAndLoad();
+    await loadCanvasNotes();
+};
